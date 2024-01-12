@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\QuestionRequest;
+use App\Models\Question;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -14,6 +15,14 @@ class AnswerQuestionController extends Controller
     public function __invoke(QuestionRequest $request)
     {
         $promt = $request->question . "\n";
+
+        $question = Question::whereQuery($request->question)
+            ->whereHashedChoices(hex2bin(md5(json_encode($request->choices))))
+            ->first();
+        if ($question) {
+
+            return $question->ans;
+        }
 
         foreach ($request->choices as $i => $choice) {
             $promt .= $i . ". " . $choice . "\n";
@@ -37,6 +46,22 @@ class AnswerQuestionController extends Controller
                 ]
             ]);
 
-        return $response->json();
+        $result = $response->json();
+
+        abort_if(isset($result["error"]), 503);
+
+        $ans = json_decode($result["choices"][0]["message"]["content"], true);
+
+        // check ans is exists or not
+        abort_if(!isset($ans["ans"]), 503);
+
+
+        Question::create([
+            'query' => $request->question,
+            'choices' => $request->choices,
+            'ans' => $ans["ans"],
+        ]);
+
+        return $ans["ans"];
     }
 }
